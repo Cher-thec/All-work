@@ -1,0 +1,107 @@
+(!************************************************** TB ROAD - EDC1 ***************************************************!)
+
+model "transport"
+uses "mmxprs"
+
+(!*************************************************** DECLARATIONS ****************************************************!)
+
+parameters
+
+	NBPERIODES    = 20
+	NBARCS        = 15
+	NBSOMMETS     = 8
+	QUANTITE      = 150
+
+end-parameters
+
+declarations
+
+	PERIODES      =1..NBPERIODES
+	ARCS          =1..NBARCS
+	SOMMETS       =1..NBSOMMETS
+
+	! paramètres du réseau
+	Cadence       : array(ARCS) of real
+	Temps         : array(ARCS) of real
+	Capa          : array(ARCS) of real
+	CoutPropor    : array(ARCS) of real
+	CoutFixe      : array(ARCS) of real
+	SommetEntrant : array(ARCS) of real
+	SommetSortant : array(ARCS) of real
+
+	! variables
+
+	x : array(ARCS,PERIODES) of mpvar
+ 	q : array(ARCS,PERIODES) of mpvar
+
+	! A COMPLETER
+
+end-declarations
+
+(!************************************************** INITIALIZATION ***************************************************!)
+
+                    !  1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  (arcs)
+Cadence          :: [  2,  4,  4,  6,  2,  2,  2,  6,  4,  4,  2,  4,  2,  2,  4]
+Temps            :: [  2,  1,  1,  5,  1,  2,  2,  4,  1,  2,  2,  1,  1,  1,  2]
+Capa             :: [ 30, 20, 40, 50, 15, 25, 40, 45, 45, 40, 25, 40, 25, 45, 40]
+CoutPropor       :: [ 50, 70, 20,100, 40, 70, 50,120, 40, 60, 50, 70, 70, 90, 80]
+CoutFixe         :: [400,600,200,800,400,600,400,800,200,400,600,200,400,400,200]
+SommetEntrant    :: [  1,  1,  2,  2,  2,  3,  3,  3,  4,  4,  4,  5,  7,  6,  7]
+SommetSortant    :: [  2,  3,  3,  6,  4,  4,  5,  7,  5,  6,  7,  7,  6,  8,  8]
+
+forall(i in ARCS) do
+  forall(t in PERIODES |(t mod Cadence(i)=1)) do
+       x(i,t) is_binary
+       q(i,t) is_integer
+  end-do
+end-do
+
+
+(!**************************************************** OBJECTIVE ****************************************************!)
+
+cout_tot := sum(a in ARCS)(sum(t in PERIODES | (t mod Cadence(a) = 1))( x(a, t) * CoutFixe(a) + q(a, t) * CoutPropor(a)))
+
+
+(!**************************************************** Constraints ****************************************************!)
+
+forall(i in ARCS) do
+   forall(t in PERIODES) do
+      q(i,t)<=Capa(i)*x(i,t)
+    end-do
+end-do
+
+sum(a in ARCS | SommetSortant(a)=8)(sum(t in PERIODES |(t mod Cadence(a)=1) and (t <= NBPERIODES-Temps(a)))q(a,t)) = QUANTITE
+sum(a in ARCS | SommetEntrant(a)=1)(sum(t in PERIODES |(t mod Cadence(a)=1))(q(a,t))) = QUANTITE
+
+forall(s in 2..7) do
+   forall(t in PERIODES) do
+      (sum(i in ARCS | SommetEntrant(i)=s, t2 in 1..t | t2 mod Cadence(i)=1)(q(i,t2)) <= sum(i in ARCS | SommetSortant(i)=s, t2 in 1..t | (t2 mod Cadence(i)=1) and (t2<= t-Temps(i)))(q(i,t2)))
+    end-do
+end-do
+
+(!**************************************************** Résolution ****************************************************!)
+
+minimise(cout_tot)
+
+(!**************************************************** POSTPROCESSING ****************************************************!)
+
+! Solution printing
+
+writeln("le coût total est de: ", getobjval, " euros")
+
+writeln("Arc , Période , Quantité ")
+forall(i in ARCS,t in PERIODES | getsol(x(i,t))>0) do
+    writeln(i,", ",t, ", ", getsol(q(i,t)))
+end-do
+
+
+! écriture du fichier !
+fopen("planning_transport.txt",F_OUTPUT)
+forall(i in ARCS,t in PERIODES | getsol(x(i,t))>0) do
+    writeln(i, "\t", t, "\t", getsol(q(i,t)))
+end-do
+fclose(F_OUTPUT)
+
+(!*************************************************** END OF MODEL ****************************************************!)
+
+end-model
